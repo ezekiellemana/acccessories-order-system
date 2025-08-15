@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Light neutral background and default text color */
+body {
+  @apply bg-neutral-50 text-neutral-800;
+}
