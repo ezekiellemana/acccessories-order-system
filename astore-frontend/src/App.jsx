@@ -13,8 +13,6 @@ import Checkout from './pages/Checkout';
 import Profile from './pages/Profile';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
-import ForgotPassword from './pages/ForgotPassword';
-import OAuth from './pages/OAuth';
 
 import AdminDashboard from './pages/AdminDashboard';
 import AdminUsers from './pages/admin/AdminUsers';
@@ -112,8 +110,6 @@ export default function App() {
           <Route path="analytics/charts" element={<AdminAnalyticsCharts />} />
         </Route>
 
-        {/* ===== OAUTH CALLBACK ===== */}
-        <Route path="/oauth" element={<OAuth />} />
 
         {/* ===== PUBLIC SHOP ===== */}
         <Route element={<Layout />}>
@@ -151,14 +147,6 @@ export default function App() {
             element={
               <RedirectIfAdmin to="/admin">
                 <Signup />
-              </RedirectIfAdmin>
-            }
-          />
-          <Route
-            path="/forgot-password"
-            element={
-              <RedirectIfAdmin to="/admin">
-                <ForgotPassword />
               </RedirectIfAdmin>
             }
           />
