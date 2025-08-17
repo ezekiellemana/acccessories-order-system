@@ -104,7 +104,7 @@ export default function Products() {
     categoryOptions.find((c) => c._id === selectedCategory)?.name || 'All';
 
   return (
-    <div className="space-y-6">
+    <div className="pt-7 space-y-6">
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
         <h2 className="text-2xl font-bold text-neutral-800">

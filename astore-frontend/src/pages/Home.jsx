@@ -92,7 +92,7 @@ export default function Home() {
   };
 
   return (
-    <div className="space-y-20">
+    <div className="pt-20 space-y-20">
       {/* Hero */}
       <section className="relative bg-gradient-to-r from-primary-100 to-primary-50 py-20 rounded-2xl shadow-card overflow-hidden">
         <div className="absolute inset-0 opacity-10 bg-[url('/hero-bg.svg')] bg-center bg-no-repeat" />
