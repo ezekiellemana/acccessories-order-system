@@ -254,7 +254,6 @@ const getCartQuery = req => req.user ? { user: req.user._id } : { guestId: req.c
 // ────────────────────────────────
 const authLimiter = rateLimit({ windowMs:60*1000, max:50 });
 app.use('/api/users/login', authLimiter);
-app.use('/api/users/forgot-password', authLimiter);
 
 // ────────────────────────────────
 // ROUTES: USERS
