@@ -1,28 +1,22 @@
 // src/components/Navbar.jsx
-
-import React, { useEffect, useState } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from "react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import {
   Menu as MenuIcon,
   X as CloseIcon,
   LogOut,
   ShoppingCart,
-  Sun,
-  Moon,
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import api from '../services/api';
-import useAuthStore from '../store/useAuthStore';
-import useCartStore from '../store/useCartStore';
-import useThemeStore from '../store/useThemeStore';
-import LogoutConfirmationModal from './LogoutConfirmationModal';
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import api from "../services/api";
+import useAuthStore from "../store/useAuthStore";
+import useCartStore from "../store/useCartStore";
+import LogoutConfirmationModal from "./LogoutConfirmationModal";
 
 export default function Navbar() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const cartItems = useCartStore((s) => s.items);
-  const theme = useThemeStore((s) => s.theme);
-  const toggleTheme = useThemeStore((s) => s.toggle);
   const navigate = useNavigate();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -33,10 +27,10 @@ export default function Navbar() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await api.get('/api/categories');
+        const { data } = await api.get("/api/categories");
         setCategories(Array.isArray(data) ? data : []);
       } catch (err) {
-        console.error('Could not load categories', err);
+        console.error("Could not load categories", err);
       }
     })();
   }, []);
@@ -44,24 +38,24 @@ export default function Navbar() {
   // Prevent back-nav when user is logged in
   useEffect(() => {
     if (!user) return;
-    window.history.pushState(null, '', window.location.href);
+    window.history.pushState(null, "", window.location.href);
     const handler = (e) => {
       e.preventDefault();
       setConfirmOpen(true);
     };
-    window.addEventListener('popstate', handler);
-    return () => window.removeEventListener('popstate', handler);
+    window.addEventListener("popstate", handler);
+    return () => window.removeEventListener("popstate", handler);
   }, [user]);
 
   const triggerLogout = () => setConfirmOpen(true);
   const onConfirmLogout = () => {
     setConfirmOpen(false);
     logout();
-    navigate('/');
+    navigate("/");
   };
   const onCancelLogout = () => {
     setConfirmOpen(false);
-    window.history.pushState(null, '', window.location.href);
+    window.history.pushState(null, "", window.location.href);
   };
 
   const goToCategory = (catId) => {
@@ -79,7 +73,10 @@ export default function Navbar() {
       >
         <div className="max-w-7xl mx-auto flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
           {/* Logo */}
-          <Link to="/" className="text-2xl font-extrabold hover:opacity-90 transition-colors">
+          <Link
+            to="/"
+            className="text-2xl font-extrabold hover:opacity-90 transition-colors"
+          >
             <span className="text-accent-300">a</span>Store
           </Link>
 
@@ -90,8 +87,8 @@ export default function Navbar() {
               className={({ isActive }) =>
                 `px-3 py-1 rounded-md ${
                   isActive
-                    ? 'bg-accent-300 text-primary-900 font-semibold'
-                    : 'hover:bg-primary-600'
+                    ? "bg-accent-300 text-primary-900 font-semibold"
+                    : "hover:bg-primary-600"
                 }`
               }
             >
@@ -102,8 +99,17 @@ export default function Navbar() {
             <div className="relative group">
               <button className="flex items-center px-3 py-1 rounded-md hover:bg-primary-600 transition-colors">
                 Products
-                <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path d="M19 9l-7 7-7-7" strokeWidth="2" strokeLinecap="round" />
+                <svg
+                  className="ml-1 w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d="M19 9l-7 7-7-7"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
                 </svg>
               </button>
               <div className="absolute left-0 mt-2 w-48 bg-primary-600 text-white rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity">
@@ -124,8 +130,8 @@ export default function Navbar() {
               className={({ isActive }) =>
                 `flex items-center px-3 py-1 rounded-md ${
                   isActive
-                    ? 'bg-accent-300 text-primary-900 font-semibold'
-                    : 'hover:bg-primary-600'
+                    ? "bg-accent-300 text-primary-900 font-semibold"
+                    : "hover:bg-primary-600"
                 }`
               }
             >
@@ -137,14 +143,6 @@ export default function Navbar() {
               )}
             </NavLink>
 
-            <button
-              onClick={toggleTheme}
-              className="p-2 rounded-md hover:bg-primary-600 transition-colors"
-              aria-label="Toggle theme"
-            >
-              {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-            </button>
-
             {user ? (
               <button
                 onClick={triggerLogout}
@@ -154,10 +152,16 @@ export default function Navbar() {
               </button>
             ) : (
               <>
-                <NavLink to="/login" className="px-3 py-1 rounded-md hover:bg-primary-600 transition-colors">
+                <NavLink
+                  to="/login"
+                  className="px-3 py-1 rounded-md hover:bg-primary-600 transition-colors"
+                >
                   Log In
                 </NavLink>
-                <NavLink to="/signup" className="px-3 py-1 rounded-md hover:bg-primary-600 transition-colors">
+                <NavLink
+                  to="/signup"
+                  className="px-3 py-1 rounded-md hover:bg-primary-600 transition-colors"
+                >
                   Sign Up
                 </NavLink>
               </>
@@ -179,7 +183,7 @@ export default function Navbar() {
           {drawerOpen && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
+              animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: 0.25 }}
               className="md:hidden bg-gradient-to-r from-primary-700 to-primary-500 text-white overflow-hidden"

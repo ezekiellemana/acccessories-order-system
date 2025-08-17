@@ -101,7 +101,7 @@ export default function Home() {
             Welcome to aStore
           </h1>
           <p className="text-xl sm:text-2xl text-primary-600">
-            Discover our most popular products with exclusive deals and free shipping.
+            Discover our most popular products with exclusive deals and free delivering.
           </p>
           <Link to="/products">
             <motion.div whileHover={{ scale: 1.05 }} transition={{ duration: 0.3 }}>
