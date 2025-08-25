@@ -7,11 +7,9 @@
 
 ## Frontend URL
 
-[http://localhost:5173
-](http://localhost:5173)
+[http://localhost:5173](http://localhost:5173)
 
-## Backend API
-
+## Backend 
 [http://localhost:5000](http://localhost:5000)
 
 ## Dev Guide

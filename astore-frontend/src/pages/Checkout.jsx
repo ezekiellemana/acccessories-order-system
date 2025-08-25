@@ -44,7 +44,7 @@ export default function Checkout() {
     let y = 20;
     doc.setFillColor('#2255A3').rect(0, 0, w, 60, 'F');
     doc.setFontSize(14).setTextColor('#FFF').setFont('helvetica', 'bold');
-    doc.text('eStore Receipt', 20, 28);
+    doc.text('aStore Receipt', 20, 28);
     doc.setFontSize(9).setTextColor('#333').setFont('helvetica', 'normal');
     doc.text(`Order ID: ${id}`, 20, (y = 70));
     doc.text(`Date: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 20, y + 12);
@@ -96,7 +96,7 @@ export default function Checkout() {
 
     const total = subtotal + shipping;
 
-    const message = `Hello! I just placed an order (#${orderId}) from eStore.\n\n${lineItems.join(
+    const message = `Hello! I just placed an order (#${orderId}) from aStore.\n\n${lineItems.join(
       '\n'
     )}\n\nSubtotal: Tsh.${subtotal.toLocaleString('en-US')}\nShipping: Tsh.${shipping.toLocaleString('en-US')}\n\nTOTAL: Tsh.${total.toLocaleString('en-US')}\n\nThank you!`;
 
