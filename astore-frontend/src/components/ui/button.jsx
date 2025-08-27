@@ -1,23 +1,26 @@
+// src/components/ui/button.jsx (if you don't have one)
 import React from 'react';
 
-const VARIANTS = {
-  default: 'bg-primary-500 text-white hover:bg-primary-600',
-  outline: 'border border-primary-500 text-primary-500 hover:bg-primary-50',
-  ghost: 'bg-transparent hover:bg-primary-100',
-};
-
-export function Button({
-  children,
+export const Button = ({ 
+  children, 
+  onClick, 
+  className = '', 
   variant = 'default',
-  className = '',
-  ...props
-}) {
+  ...props 
+}) => {
+  const baseClasses = 'px-4 py-2 rounded-lg font-medium transition-colors';
+  const variants = {
+    default: 'bg-purple-600 text-white hover:bg-purple-700',
+    outline: 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+  };
+
   return (
     <button
-      className={`px-4 py-2 rounded-2xl font-medium focus:outline-none transition ${VARIANTS[variant]} ${className}`}
+      className={`${baseClasses} ${variants[variant]} ${className}`}
+      onClick={onClick}
       {...props}
     >
       {children}
     </button>
   );
-}
+};

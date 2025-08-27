@@ -8,6 +8,8 @@ const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const session = require('express-session');
+const emailValidator = require('email-validator');
+const dns = require('dns').promises;
 const MongoStore = require('connect-mongo');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
@@ -15,7 +17,6 @@ const { body, query, validationResult } = require('express-validator');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
-const cron = require('node-cron');
 const multer = require('multer');
 const { Parser } = require('json2csv');
 const { randomUUID } = require('crypto');
@@ -88,14 +89,40 @@ const sanitizeInput = (req, res, next) => {
 app.use(sanitizeInput);
 
 // ────────────────────────────────
+//  FIREBASE ADMIN INITIALIZATION
+// ────────────────────────────────
+
+// Add to your imports section
+const admin = require('firebase-admin');
+
+// Initialize Firebase Admin
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '{}');
+
+if (Object.keys(serviceAccount).length > 0) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+} else {
+  console.warn('Firebase Admin not initialized - missing service account');
+}
+
+// ────────────────────────────────
 // DB SCHEMAS
 // ────────────────────────────────
 
 // USER
+// USER SCHEMA (add avatar field)
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-  password: { type: String, required: true, select: false },
+  password: { 
+    type: String, 
+    required: function() {
+      // Password is only required for non-OAuth users
+      return !this.oauthProvider;
+    },
+    select: false 
+  },
   isAdmin: { type: Boolean, default: false },
   address: { street: String, city: String, country: String, postalCode: String },
   wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
@@ -103,10 +130,15 @@ const userSchema = new mongoose.Schema({
   passwordResetExpires: Date,
   oauthProvider: String,
   oauthId: String,
+  avatar: { type: String }, // Add this field for profile pictures
+  isVerified: { type: Boolean, default: false }, // Add this field for email verification status
   createdAt: { type: Date, default: Date.now },
 });
+
+// Update the pre-save hook to handle OAuth users
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
+  // Only hash password if it's modified and user is not OAuth
+  if (!this.isModified('password') || this.oauthProvider) return next();
   this.password = await bcrypt.hash(this.password, 12);
   next();
 });
@@ -260,28 +292,236 @@ app.use('/api/users/login', authLimiter);
 // ────────────────────────────────
 
 // REGISTER
+
+
+// REGISTER WITH EMAIL VALIDATION
 app.post('/api/users/register',
   [ body('name').notEmpty(), body('email').isEmail(), body('password').isLength({min:6}) ],
   async (req,res,next) => {
     const errs=validationResult(req);
     if(!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });
+    
     try {
       const {name,email,password}=req.body;
-      if(await User.findOne({email})) return res.status(400).json({ error:'Email in use' });
-      const user=new User({name,email,password});
-      await user.save();
-      // auto-login
-      req.session.userId = user._id;
-      req.session.save(err => {
-        if(err) return next(err);
-        const safe= {...user.toObject(), password:undefined};
-        res.status(201).json({ user: safe });
+      
+      // Check if user already exists
+      if(await User.findOne({email})) {
+        return res.status(400).json({ error:'Email already in use' });
+      }
+      
+      // Validate email format
+      if (!emailValidator.validate(email)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+      }
+      
+      // Check if email domain exists (basic validation)
+      const domain = email.split('@')[1];
+      try {
+        await dns.resolveMx(domain);
+      } catch (error) {
+        return res.status(400).json({ error: 'Email domain does not exist or cannot receive emails' });
+      }
+      
+      // Generate verification token
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+      const verificationExpires = Date.now() + 24 * 60 * 60 * 1000;
+      
+      // Create user
+      const user=new User({
+        name,
+        email,
+        password,
+        isVerified: false,
+        verificationToken,
+        verificationExpires
       });
-    } catch(e){next(e);}
+      
+      await user.save();
+
+      // Send verification email (try/catch in case email fails)
+      try {
+        const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email/${verificationToken}`;
+        
+        await transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: email,
+          subject: 'Verify Your Email Address',
+          html: `
+            <h2>Email Verification</h2>
+            <p>Hello ${name},</p>
+            <p>Please click the link below to verify your email address:</p>
+            <a href="${verificationUrl}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">
+              Verify Email
+            </a>
+            <p>This link will expire in 24 hours.</p>
+          `
+        });
+      } catch (emailError) {
+        console.error('Failed to send verification email:', emailError);
+        // Continue with registration even if email fails
+      }
+
+      res.status(201).json({ 
+        message: 'Registration successful. Please check your email to verify your account.',
+        requiresVerification: true
+      });
+      
+    } catch(e) {
+      // Handle specific DNS validation errors
+      if (e.code === 'ENOTFOUND' || e.code === 'ENODATA') {
+        return res.status(400).json({ error: 'Email domain does not exist' });
+      }
+      next(e);
+    }
   }
 );
 
-// LOGIN
+// REGISTER WITH EMAIL VERIFICATION
+app.post('/api/users/register',
+  [ body('name').notEmpty(), body('email').isEmail(), body('password').isLength({min:6}) ],
+  async (req,res,next) => {
+    const errs=validationResult(req);
+    if(!errs.isEmpty()) return res.status(400).json({ errors: errs.array() });
+    
+    try {
+      const {name,email,password}=req.body;
+      
+      // Check if user already exists
+      if(await User.findOne({email})) return res.status(400).json({ error:'Email in use' });
+      
+      // Generate verification token
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+      const verificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+      
+      // Create user with verification fields
+      const user=new User({
+        name,
+        email,
+        password,
+        isVerified: false,
+        verificationToken,
+        verificationExpires
+      });
+      
+      await user.save();
+
+      // Send verification email
+      try {
+        const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email/${verificationToken}`;
+        
+        await transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: email,
+          subject: 'Verify Your Email Address',
+          html: `
+            <h2>Email Verification</h2>
+            <p>Hello ${name},</p>
+            <p>Please click the link below to verify your email address:</p>
+            <a href="${verificationUrl}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">
+              Verify Email
+            </a>
+            <p>This link will expire in 24 hours.</p>
+            <p>If you didn't create this account, please ignore this email.</p>
+          `
+        });
+      } catch (emailError) {
+        console.error('Failed to send verification email:', emailError);
+        // Don't fail the registration if email fails, just log it
+      }
+
+      // Respond with success (but don't auto-login until verified)
+      res.status(201).json({ 
+        message: 'Registration successful. Please check your email to verify your account.',
+        requiresVerification: true
+      });
+      
+    } catch(e) {
+      next(e);
+    }
+  }
+);
+
+// EMAIL VERIFICATION ENDPOINT
+app.get('/api/users/verify-email/:token', async (req, res, next) => {
+  try {
+    const { token } = req.params;
+    
+    const user = await User.findOne({
+      verificationToken: token,
+      verificationExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or expired verification token' });
+    }
+
+    // Mark user as verified and clear verification fields
+    user.isVerified = true;
+    user.verificationToken = undefined;
+    user.verificationExpires = undefined;
+    await user.save();
+
+    // Auto-login after successful verification
+    req.session.userId = user._id;
+    req.session.save(err => {
+      if (err) return next(err);
+      const safeUser = { ...user.toObject(), password: undefined };
+      res.json({ 
+        message: 'Email verified successfully!',
+        user: safeUser 
+      });
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+// RESEND VERIFICATION EMAIL ENDPOINT
+app.post('/api/users/resend-verification', async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    
+    const user = await User.findOne({ email, isVerified: false });
+    
+    if (!user) {
+      return res.status(400).json({ error: 'User not found or already verified' });
+    }
+
+    // Generate new verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationExpires = Date.now() + 24 * 60 * 60 * 1000;
+
+    user.verificationToken = verificationToken;
+    user.verificationExpires = verificationExpires;
+    await user.save();
+
+    // Send new verification email
+    const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email/${verificationToken}`;
+    
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: 'Verify Your Email Address',
+      html: `
+        <h2>Email Verification</h2>
+        <p>Hello ${user.name},</p>
+        <p>Here's your new verification link:</p>
+        <a href="${verificationUrl}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">
+          Verify Email
+        </a>
+        <p>This link will expire in 24 hours.</p>
+      `
+    });
+
+    res.json({ message: 'Verification email sent successfully' });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+// LOGIN (update to handle OAuth users)
 app.post('/api/users/login',
   [ body('email').isEmail(), body('password').notEmpty() ],
   async (req,res,next) => {
@@ -290,8 +530,18 @@ app.post('/api/users/login',
     try {
       const { email,password }=req.body;
       const user=await User.findOne({email}).select('+password');
-      if(!user) return res.status(400).json({ error:'Invalid creds' });
-      if(!(await bcrypt.compare(password,user.password))) return res.status(400).json({ error:'Invalid creds' });
+      
+      if(!user) return res.status(400).json({ error:'Invalid credentials' });
+      
+      // Check if user registered with OAuth
+      if (user.oauthProvider) {
+        return res.status(400).json({ 
+          error: `This account was created with ${user.oauthProvider}. Please use ${user.oauthProvider} login.` 
+        });
+      }
+      
+      if(!(await bcrypt.compare(password,user.password))) return res.status(400).json({ error:'Invalid credentials' });
+      
       req.session.userId=user._id;
       req.session.save(async err => {
         if(err) return next(err);
@@ -301,7 +551,25 @@ app.post('/api/users/login',
     } catch(e){next(e);}  
   }
 );
-
+// CHECK LOGIN METHOD
+app.get('/api/users/check-login-method/:email', async (req, res, next) => {
+  try {
+    const { email } = req.params;
+    const user = await User.findOne({ email: email.toLowerCase() });
+    
+    if (!user) {
+      return res.json({ exists: false });
+    }
+    
+    res.json({
+      exists: true,
+      oauthProvider: user.oauthProvider || null,
+      hasPassword: !user.oauthProvider // If no OAuth provider, they have a password
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 // LOGOUT
 app.post('/api/users/logout', (req,res) => {
   req.session.destroy(() => {
@@ -391,6 +659,84 @@ app.get('/api/users', authMiddleware, adminMiddleware, async (req, res, next) =>
     res.json(users);
   } catch (err) {
     next(err);
+  }
+});
+
+// GOOGLE LOGIN ENDPOINT
+app.post('/api/users/google-login', async (req, res, next) => {
+  try {
+    const { uid, email, name, photoURL } = req.body;
+    
+    // Validate required fields
+    if (!uid || !email) {
+      return res.status(400).json({ error: 'Missing required authentication data' });
+    }
+    
+    // Find user by oauthId (Firebase UID) or email
+    let user = await User.findOne({
+      $or: [
+        { oauthId: uid, oauthProvider: 'google' },
+        { email: email.toLowerCase() }
+      ]
+    });
+    
+    if (user) {
+      // If user exists by email but doesn't have oauth setup
+      if (!user.oauthId || user.oauthProvider !== 'google') {
+        user.oauthId = uid;
+        user.oauthProvider = 'google';
+        
+        // Update name and photo if not set
+        if (name && !user.name) user.name = name;
+        if (photoURL && !user.avatar) user.avatar = photoURL;
+        
+        await user.save();
+      } else {
+        // Update profile information if needed
+        const updates = {};
+        if (name && user.name !== name) updates.name = name;
+        if (photoURL && !user.avatar) updates.avatar = photoURL;
+        
+        if (Object.keys(updates).length > 0) {
+          await User.findByIdAndUpdate(user._id, updates);
+        }
+      }
+    } else {
+      // Create new user with Google authentication
+      user = new User({
+        name: name || email.split('@')[0],
+        email: email.toLowerCase(),
+        oauthId: uid,
+        oauthProvider: 'google',
+        avatar: photoURL || '',
+        isVerified: true,
+        // Generate a random password for security (won't be used for OAuth users)
+        password: crypto.randomBytes(16).toString('hex')
+      });
+      await user.save();
+    }
+    
+    // Set session
+    req.session.userId = user._id;
+    
+    // Return user data (excluding password)
+    const userResponse = await User.findById(user._id).select('-password');
+    res.json({ 
+      user: userResponse,
+      message: 'Google authentication successful'
+    });
+    
+  } catch (error) {
+    console.error('Google login error:', error);
+    
+    // Handle duplicate email error
+    if (error.code === 11000 && error.keyPattern && error.keyPattern.email) {
+      return res.status(400).json({ 
+        error: 'Email already exists with a different login method' 
+      });
+    }
+    
+    res.status(500).json({ error: 'Authentication failed' });
   }
 });
 
