@@ -1,8 +1,8 @@
 [build]
   base = "astore-frontend"
-  publish = "astore-frontend/dist" 
+  publish = "dist"       # ← change this from astore-frontend/dist to just dist
   command = "npm install && npm run build"
-# in netlify.toml
+
 [build.environment]
   SECRETS_SCAN_ENABLED = "false"
 
