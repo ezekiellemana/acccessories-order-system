@@ -106,6 +106,35 @@ if (Object.keys(serviceAccount).length > 0) {
   console.warn("Firebase Admin not initialized - missing service account");
 }
 
+// ── Firebase Auth Middleware ───────────────────────────────
+const authenticateFirebase = async (req, res, next) => {
+  const token = req.headers.authorization?.split("Bearer ")[1];
+  if (!token) return res.status(401).json({ error: "No token provided" });
+
+  try {
+    const decoded = await admin.auth().verifyIdToken(token);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    res.status(401).json({ error: "Invalid token" });
+  }
+};
+
+// ── Routes ───────────────────────────────
+// Public route (no auth required)
+app.get("/api/public", (req, res) => {
+  res.json({ message: "Anyone can access this" });
+});
+
+// Protected route (requires Firebase token)
+app.get("/api/users/profile", authenticateFirebase, (req, res) => {
+  res.json({
+    uid: req.user.uid,
+    email: req.user.email,
+    name: req.user.name || "",
+  });
+});
+
 // ────────────────────────────────
 // DB SCHEMAS
 // ────────────────────────────────
@@ -371,11 +400,9 @@ app.post(
       try {
         await dns.resolveMx(domain);
       } catch (error) {
-        return res
-          .status(400)
-          .json({
-            error: "Email domain does not exist or cannot receive emails",
-          });
+        return res.status(400).json({
+          error: "Email domain does not exist or cannot receive emails",
+        });
       }
 
       // Generate verification token

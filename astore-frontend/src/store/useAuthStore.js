@@ -1,10 +1,16 @@
 // src/store/useAuthStore.js
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { getAuth, signOut } from "firebase/auth";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+} from "firebase/auth";
 import { app } from "../firebase/config";
 
-const API_BASE = import.meta.env.VITE_API_URL?.trim() || "";
+const API_BASE =
+  import.meta.env.VITE_API_URL?.trim() || "http://localhost:5000";
 
 // Initialize Firebase auth
 const auth = getAuth(app);
@@ -12,33 +18,36 @@ const auth = getAuth(app);
 const useAuthStore = create(
   persist(
     (set, get) => ({
-      // ── State ───────────────────────────────────────────────────────────
+      // ── State ──────────────────────────────
       user: null,
+      firebaseUser: null, // Firebase user object
       loading: false,
       error: null,
-      firebaseUser: null, // Firebase user object
+      hydrated: false,
+      sessionExpired: false,
+      skipIdleWarning: false,
 
-      hydrated: false, // indicates storage rehydration
-      sessionExpired: false, // flag for idle/logout message
-      skipIdleWarning: false, // flag for idle modal suppression
+      // ── Actions ────────────────────────────
 
-      // ── Actions ─────────────────────────────────────────────────────────
-
-      // Set user in state
       setUser: (userData) => set({ user: userData }),
-
-      // Set Firebase user
       setFirebaseUser: (firebaseUser) => set({ firebaseUser }),
 
-      // Fetch current user profile from backend
+      // Fetch user profile from backend using Firebase token
       fetchUser: async () => {
         set({ loading: true, error: null });
         try {
+          const firebaseUser = auth.currentUser;
+          if (!firebaseUser) throw new Error("Not authenticated");
+
+          const idToken = await firebaseUser.getIdToken();
+
           const res = await fetch(`${API_BASE}/api/users/profile`, {
-            credentials: "include", // sends cookies
+            headers: {
+              Authorization: `Bearer ${idToken}`,
+            },
           });
 
-          if (!res.ok) throw new Error("Not authenticated");
+          if (!res.ok) throw new Error("Failed to fetch user profile");
 
           const user = await res.json();
           set({ user, error: null });
@@ -50,15 +59,20 @@ const useAuthStore = create(
         }
       },
 
-      // Login with Firebase Google auth
+      // Google login
       loginWithGoogle: async () => {
         set({ loading: true, error: null });
         try {
-          // This will be handled by the Firebase UI in the component
-          // The actual authentication happens via popup in the component
-          // This function is just a placeholder for consistency
+          const provider = new GoogleAuthProvider();
+          const result = await signInWithPopup(auth, provider);
+
+          // Save Firebase user
+          set({ firebaseUser: result.user });
+
+          // Fetch backend profile
+          await get().fetchUser();
+
           return { success: true };
-        // eslint-disable-next-line no-unreachable
         } catch (err) {
           console.error("Google login failed:", err);
           set({ error: err.message || "Google authentication failed" });
@@ -68,11 +82,11 @@ const useAuthStore = create(
         }
       },
 
-      // Logout user and clear state (both backend and Firebase)
+      // Logout both Firebase and backend
       logout: async () => {
         const { firebaseUser } = get();
 
-        // Sign out from Firebase if there's a Firebase user
+        // Sign out from Firebase if exists
         if (firebaseUser) {
           try {
             await signOut(auth);
@@ -88,7 +102,7 @@ const useAuthStore = create(
           sessionExpired: false,
         });
 
-        // Call backend logout
+        // Backend logout
         try {
           await fetch(`${API_BASE}/api/users/logout`, {
             method: "POST",
@@ -99,7 +113,7 @@ const useAuthStore = create(
         }
       },
 
-      // Clear only Firebase auth (keep backend session)
+      // Clear Firebase auth only
       clearFirebaseAuth: () => {
         set({ firebaseUser: null });
         try {
@@ -109,18 +123,16 @@ const useAuthStore = create(
         }
       },
 
-      // Session handling flags
       setSessionExpired: (val) => set({ sessionExpired: val }),
       setSkipIdleWarning: (val) => set({ skipIdleWarning: val }),
     }),
     {
-      name: "auth-storage", // Key in localStorage
+      name: "auth-storage",
       partialize: (state) => ({
         user: state.user,
-        // Don't persist firebaseUser as it contains volatile data
+        // Don't persist firebaseUser
       }),
       onRehydrateStorage: () => (state) => {
-        // Mark as hydrated after persistence
         setTimeout(() => {
           state.hydrated = true;
         }, 0);
