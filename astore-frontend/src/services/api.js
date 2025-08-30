@@ -4,7 +4,6 @@ import useAuthStore from "../store/useAuthStore";
 
 // ✅ Use VITE_API_URL or fallback to localhost
 const baseURL = import.meta.env.VITE_API_URL?.trim() || "http://localhost:5000";
-console.log("✅ API Base URL:", baseURL);
 
 // ✅ Create Axios instance
 const api = axios.create({
