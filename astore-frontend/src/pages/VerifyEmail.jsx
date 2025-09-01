@@ -1,6 +1,6 @@
 // src/pages/VerifyEmail.jsx
 import React, { useState, useEffect } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
 import api from "../services/api";
 import { toast } from "react-toastify";
 import { motion } from "framer-motion";
@@ -11,16 +11,17 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 export default function VerifyEmail() {
   const { token } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [status, setStatus] = useState("verifying");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [resendEmail, setResendEmail] = useState("");
-  const [showEmailInput, setShowEmailInput] = useState(false);
+
+  // Get email from router state
+  const email = location.state?.email || "";
 
   useEffect(() => {
     const verifyEmailToken = async () => {
@@ -31,11 +32,13 @@ export default function VerifyEmail() {
         setStatus("success");
         toast.success(data.message || "Email verified successfully!");
 
-        // Update auth store here if needed
+        // Store user data if returned
         if (data.user) {
-          // e.g., setUser(data.user);
+          // You might want to update your auth store here
+          localStorage.setItem("user", JSON.stringify(data.user));
         }
 
+        // Redirect to profile after 3 seconds
         setTimeout(() => navigate("/profile"), 3000);
       } catch (err) {
         console.error("Verification error:", err);
@@ -50,21 +53,20 @@ export default function VerifyEmail() {
       }
     };
 
-    if (token) verifyEmailToken();
+    if (token) {
+      verifyEmailToken();
+    }
   }, [token, navigate]);
 
   const handleResendVerification = async () => {
-    try {
-      let emailToSend = resendEmail;
-      if (!emailToSend) {
-        setShowEmailInput(true);
-        toast.info("Please enter your email to resend verification.");
-        return;
-      }
+    if (!email) {
+      toast.error("No email found for verification");
+      return;
+    }
 
-      await api.post("/api/users/resend-verification", { email: emailToSend });
+    try {
+      await api.post("/api/users/resend-verification", { email });
       toast.success("Verification email sent! Check your inbox.");
-      setShowEmailInput(false);
     } catch (err) {
       toast.error(
         err.response?.data?.error || "Failed to resend verification email"
@@ -157,18 +159,6 @@ export default function VerifyEmail() {
                   Verification Failed
                 </h3>
                 <p className="text-gray-600 dark:text-gray-400">{error}</p>
-
-                {showEmailInput && (
-                  <div className="mb-3">
-                    <Input
-                      type="email"
-                      placeholder="Enter your email"
-                      value={resendEmail}
-                      onChange={(e) => setResendEmail(e.target.value)}
-                    />
-                  </div>
-                )}
-
                 <div className="space-y-3 pt-4">
                   <Button onClick={handleResendVerification} className="w-full">
                     Resend Verification Email
