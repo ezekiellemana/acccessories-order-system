@@ -43,15 +43,18 @@ export default function Login() {
   const auth = getAuth(app);
   const googleProvider = new GoogleAuthProvider();
 
+  // Remove back button blocking (bad UX)
   useEffect(() => {
-    window.history.pushState(null, "", window.location.href);
-    const blockNav = () =>
-      window.history.pushState(null, "", window.location.href);
-    window.addEventListener("popstate", blockNav);
-    return () => window.removeEventListener("popstate", blockNav);
+    // If you really want to block back navigation, keep your code
+    // For now, we remove it for better UX
   }, []);
 
+  /** ✅ Improved validation */
   const validate = () => {
+    if (!email.trim() || !password.trim()) {
+      toast.error("Email and password are required");
+      return false;
+    }
     if (!/\S+@\S+\.\S+/.test(email)) {
       toast.error("Invalid email address");
       return false;
@@ -63,14 +66,18 @@ export default function Login() {
     return true;
   };
 
+  /** ✅ Handle Login */
   const submit = async (e) => {
     e.preventDefault();
+    if (loading || googleLoading) return; // prevent multiple clicks
     if (!validate()) return;
+
     setLoading(true);
     try {
       const { data } = await api.post("/api/users/login", { email, password });
       const userData = data.user;
       setUser(userData);
+
       toast.success(
         userData.isAdmin
           ? `Welcome Admin, ${userData.name}!`
@@ -80,22 +87,29 @@ export default function Login() {
     } catch (err) {
       console.error(err);
       setPassword("");
-      toast.error(err.response?.data?.error || "Login failed");
+      const errorMsg =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        err.message ||
+        "Login failed";
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
+  /** ✅ Handle Google Login */
   const handleGoogleLogin = async () => {
+    if (loading || googleLoading) return; // prevent multiple clicks
     setGoogleLoading(true);
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const firebaseUser = result.user;
 
-      // Store Firebase user in state
+      // Store Firebase user
       setFirebaseUser(firebaseUser);
 
-      // Send user data to your backend
+      // Send user data to backend
       const { data } = await api.post("/api/users/google-login", {
         uid: firebaseUser.uid,
         email: firebaseUser.email,
@@ -103,7 +117,6 @@ export default function Login() {
         photoURL: firebaseUser.photoURL,
       });
 
-      // Store backend user in state
       const userData = data.user;
       setUser(userData);
 
@@ -116,19 +129,24 @@ export default function Login() {
     } catch (error) {
       console.error("Google login error:", error);
 
-      // Handle specific Firebase errors
       if (error.code === "auth/popup-closed-by-user") {
         toast.error("Google sign-in was canceled");
       } else if (error.code === "auth/network-request-failed") {
         toast.error("Network error. Please check your connection");
       } else {
-        toast.error(error.response?.data?.error || "Google login failed");
+        const errorMsg =
+          error.response?.data?.message ||
+          error.response?.data?.error ||
+          error.message ||
+          "Google login failed";
+        toast.error(errorMsg);
       }
     } finally {
       setGoogleLoading(false);
     }
   };
 
+  /** ✅ Handle Password Reset */
   const handlePasswordReset = async () => {
     if (!resetEmail || !/\S+@\S+\.\S+/.test(resetEmail)) {
       toast.error("Please enter a valid email address");
@@ -137,23 +155,14 @@ export default function Login() {
 
     setResetLoading(true);
     try {
-      console.log("Sending password reset to:", resetEmail);
-
       await sendPasswordResetEmail(auth, resetEmail);
-
-      console.log("Password reset email sent successfully");
       toast.success(
         "Password reset email sent! Check your inbox and spam folder."
       );
-
       setShowResetModal(false);
       setResetEmail("");
     } catch (error) {
       console.error("Password reset error:", error);
-      console.error("Error code:", error.code);
-      console.error("Error message:", error.message);
-
-      // More specific error handling
       switch (error.code) {
         case "auth/user-not-found":
           toast.error("No account found with this email address");
@@ -163,9 +172,6 @@ export default function Login() {
           break;
         case "auth/invalid-email":
           toast.error("Invalid email address format");
-          break;
-        case "auth/operation-not-allowed":
-          toast.error("Password reset is not enabled for this project");
           break;
         default:
           toast.error("Failed to send password reset email. Please try again.");
@@ -177,7 +183,7 @@ export default function Login() {
 
   return (
     <>
-      {/* Password Reset Modal */}
+      {/* ✅ Password Reset Modal */}
       {showResetModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <motion.div
@@ -255,7 +261,7 @@ export default function Login() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
                   className="mt-2 focus:ring-2 focus:ring-purple-500 transition"
-                  disabled={googleLoading}
+                  disabled={loading || googleLoading}
                 />
               </div>
 
@@ -271,30 +277,32 @@ export default function Login() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Your password"
                   className="mt-2 pr-12 focus:ring-2 focus:ring-purple-500 transition"
-                  disabled={googleLoading}
+                  disabled={loading || googleLoading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((p) => !p)}
+                  aria-label="Toggle password visibility"
                   className="absolute top-11 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-purple-500 transition"
-                  disabled={googleLoading}
+                  disabled={loading || googleLoading}
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
               </div>
 
-              {/* Forgot Password Link */}
+              {/* Forgot Password */}
               <div className="text-right">
                 <button
                   type="button"
                   onClick={() => setShowResetModal(true)}
                   className="text-sm text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 transition-colors"
+                  disabled={loading || googleLoading}
                 >
                   Forgot your password?
                 </button>
               </div>
 
-              {/* Submit Button */}
+              {/* Login Button */}
               <AnimatedButton
                 type="submit"
                 className="w-full py-3 mt-2 bg-gradient-to-r from-purple-500 to-purple-700 text-white rounded-xl text-lg font-semibold shadow hover:shadow-lg transition-all"
@@ -313,7 +321,7 @@ export default function Login() {
                 <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
               </div>
 
-              {/* Google Login Button */}
+              {/* Google Login */}
               <button
                 onClick={handleGoogleLogin}
                 disabled={loading || googleLoading}
@@ -346,7 +354,7 @@ export default function Login() {
   );
 }
 
-// Simple Button component if you don't have one
+// ✅ Reusable Button Component
 const Button = ({
   children,
   onClick,
