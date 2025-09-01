@@ -19,19 +19,34 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 
 // Firebase imports
-import { getAuth, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import {
+  getAuth,
+  signInWithPopup,
+  GoogleAuthProvider,
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+} from "firebase/auth";
 import { app } from "../firebase/config";
 
 // Add this utility function for fake domain detection
 const isLikelyFakeEmail = (email) => {
   const fakeDomains = [
-    'example.com', 'test.com', 'fake.com', 'invalid.com',
-    'nonexistent.com', 'temp.com', 'demo.com', 'sample.com',
-    'mailinator.com', '10minutemail.com', 'guerrillamail.com',
-    'throwawaymail.com', 'disposable.com'
+    "example.com",
+    "test.com",
+    "fake.com",
+    "invalid.com",
+    "nonexistent.com",
+    "temp.com",
+    "demo.com",
+    "sample.com",
+    "mailinator.com",
+    "10minutemail.com",
+    "guerrillamail.com",
+    "throwawaymail.com",
+    "disposable.com",
   ];
-  
-  const domain = email.split('@')[1]?.toLowerCase();
+
+  const domain = email.split("@")[1]?.toLowerCase();
   return fakeDomains.includes(domain);
 };
 
@@ -77,28 +92,31 @@ export default function Signup() {
 
   // ADD THIS FUNCTION: Real-time email validation
   const checkEmailDomain = async (email) => {
-    if (!email.includes('@')) {
+    if (!email.includes("@")) {
       setEmailValid(true);
       return;
     }
-    
+
     setEmailChecking(true);
     try {
       // Simple client-side check for common fake domains
       const isFake = isLikelyFakeEmail(email);
-      
+
       if (isFake) {
         setEmailValid(false);
-        setErrors({ email: 'This email domain appears to be invalid. Please use a real email address.' });
+        setErrors({
+          email:
+            "This email domain appears to be invalid. Please use a real email address.",
+        });
       } else {
         setEmailValid(true);
         // Clear email error if it was previously set
         if (errors.email) {
-          setErrors({...errors, email: ''});
+          setErrors({ ...errors, email: "" });
         }
       }
     } catch (error) {
-      console.error('Email validation error:', error);
+      console.error("Email validation error:", error);
       setEmailValid(true); // Default to valid on error
     } finally {
       setEmailChecking(false);
@@ -109,14 +127,14 @@ export default function Signup() {
   const handleEmailChange = (e) => {
     const value = e.target.value;
     setEmail(value);
-    
+
     // Clear previous email errors
     if (errors.email) {
-      setErrors({...errors, email: ''});
+      setErrors({ ...errors, email: "" });
     }
-    
+
     // Validate email in real-time
-    if (value.includes('@')) {
+    if (value.includes("@")) {
       checkEmailDomain(value);
     } else {
       setEmailValid(true);
@@ -125,13 +143,12 @@ export default function Signup() {
 
   const submitHandler = async (e) => {
     e.preventDefault();
-    
-    // Check if email is valid before submitting
+
     if (!emailValid) {
       toast.error("Please use a valid email address");
       return;
     }
-    
+
     const validationErrors = validate();
     if (Object.keys(validationErrors).length) {
       setErrors(validationErrors);
@@ -142,40 +159,43 @@ export default function Signup() {
     setErrors({});
 
     try {
-      const response = await api.post("/api/users/register", {
+      // 1️⃣ Create Firebase user
+      const auth = getAuth(app);
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      const firebaseUser = userCredential.user;
+
+      // 2️⃣ Send Firebase verification email
+      await sendEmailVerification(firebaseUser);
+
+      // 3️⃣ Send user to your backend (optional, for storing profile info)
+      await api.post("/api/users/register", {
         name,
         email,
-        password,
+        password: "hidden", // Optional: never store raw password in backend
+        firebaseUid: firebaseUser.uid,
       });
 
-      // Store email for potential resend verification
+      // 4️⃣ Store email locally for resend verification
       localStorage.setItem("pendingVerificationEmail", email);
 
+      // 5️⃣ Show verification screen
       setVerificationSent(true);
       toast.success(
-        response.data.message ||
-          "Registration successful! Please check your email to verify your account."
+        "Registration successful! Check your email to verify your account."
       );
     } catch (err) {
       console.error("Signup error:", err);
-      const msg =
-        err.response?.data?.error ||
-        err.response?.data?.errors?.map((v) => v.msg).join(", ") ||
-        "Registration failed. Please check your info.";
 
-      // Specific error for invalid email domain
-      if (
-        err.response?.data?.error?.includes("domain does not exist") ||
-        err.response?.data?.error?.includes("cannot receive emails")
-      ) {
-        setErrors({
-          email:
-            "This email domain does not exist. Please use a valid email address.",
-        });
-        toast.error("Please use a valid email address with a real domain.");
+      if (err.code?.includes("auth/email-already-in-use")) {
+        setErrors({ email: "This email is already registered." });
+        toast.error("This email is already registered.");
       } else {
-        setErrors({ submit: msg });
-        toast.error(msg);
+        setErrors({ submit: err.message || "Registration failed." });
+        toast.error(err.message || "Registration failed.");
       }
     } finally {
       setLoading(false);
@@ -418,7 +438,8 @@ export default function Signup() {
                 )}
                 {!emailValid && !errors.email && (
                   <p className="text-red-500 text-sm">
-                    This email domain doesn't appear to exist. Please use a valid email.
+                    This email domain doesn't appear to exist. Please use a
+                    valid email.
                   </p>
                 )}
               </div>
